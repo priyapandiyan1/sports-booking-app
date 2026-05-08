@@ -1,5 +1,5 @@
 const { open } = require('sqlite');
-const sqlite3 = require('sqlite3');
+
 
 async function addSports() {
   const db = await open({ filename: './db/database.sqlite', driver: sqlite3.Database });
