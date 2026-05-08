@@ -2,7 +2,7 @@ require('dotenv').config();
 const mysql = require('mysql2/promise');
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
-const path = require('path');cd
+const path = require('path');
 
 const useMysql = !!(process.env.DB_HOST || process.env.MYSQL_HOST);
 
