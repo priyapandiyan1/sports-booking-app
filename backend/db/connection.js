@@ -1,6 +1,7 @@
 require('dotenv').config();
 const mysql = require('mysql2/promise');
 const sqlite3 = require('sqlite3');
+const sqlite3 = require("sqlite3").verbose();
 const { open } = require('sqlite');
 const path = require('path');
 
