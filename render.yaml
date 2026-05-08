@@ -1,0 +1,21 @@
+# Render deployment configuration
+# This file tells Render how to build and run your backend
+
+services:
+  - type: web
+    name: sports-booking-backend
+    env: node
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false

@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sports Booking - User to Admin Flow</title>
+  <style>
+    :root {
+      --bg: #efeff3;
+      --text: #2a2f45;
+      --muted: #667085;
+      --blue: #3b82f6;
+      --blue-dark: #1d4ed8;
+      --card: #ffffff;
+      --line: #e7eaf1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      width: min(1300px, 96vw);
+      margin: 28px auto;
+    }
+    .titles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: end;
+      margin-bottom: 8px;
+      padding: 0 30px;
+    }
+    .titles h2 {
+      margin: 0;
+      font-size: 52px;
+      letter-spacing: .2px;
+      font-weight: 700;
+    }
+    .flow-label {
+      position: absolute;
+      left: 49%;
+      top: -8px;
+      transform: translateX(-50%);
+      font-size: 28px;
+      color: #394150;
+      font-weight: 600;
+    }
+    .board {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 38px;
+      align-items: start;
+      padding: 24px 10px 0;
+    }
+    .arrow-layer {
+      position: absolute;
+      inset: -48px 0 auto 0;
+      pointer-events: none;
+      height: 180px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, .07);
+    }
+    .user-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid #edf0f6;
+      background: #fff;
+      font-size: 12px;
+    }
+    .nav { display: flex; gap: 18px; color: #3f4655; }
+    .brand { font-weight: 700; color: #2f3d87; }
+    .login-btn {
+      background: linear-gradient(90deg, #4f46e5, #3b82f6);
+      color: #fff;
+      border: 0;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .hero {
+      min-height: 440px;
+      background:
+        linear-gradient(180deg, rgba(11, 22, 58, .5), rgba(11, 22, 58, .8)),
+        radial-gradient(circle at 20% 20%, #4562d9 0 18%, transparent 40%),
+        linear-gradient(120deg, #1e3a8a, #0f172a 55%, #14532d);
+      color: #fff;
+      padding: 42px 28px 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 16px;
+    }
+    .hero h3 { margin: 0; font-size: 52px; line-height: 1.04; }
+    .hero h3 span { color: #60a5fa; }
+    .hero p { margin: 0; color: #d8deec; max-width: 86%; font-size: 20px; line-height: 1.45; }
+    .hero-actions { display: flex; gap: 12px; margin-top: 12px; }
+    .btn {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 20px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-secondary { background: rgba(255,255,255,.13); color: #fff; border: 1px solid rgba(255,255,255,.26); }
+
+    .admin-header {
+      background: #1e3a8a;
+      color: #fff;
+      padding: 12px 18px;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .admin-body {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      min-height: 510px;
+    }
+    .side {
+      background: #f7f9fc;
+      border-right: 1px solid #e8edf5;
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+    .side div {
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #4b5563;
+    }
+    .side .active {
+      background: #e0ebff;
+      color: #1d4ed8;
+      font-weight: 700;
+    }
+    .main { padding: 16px; }
+    .main h4 { margin: 0 0 12px; font-size: 22px; }
+    .filters {
+      display: grid;
+      grid-template-columns: 1fr 170px 110px;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .field, .search {
+      border: 1px solid #dce3ef;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 12px;
+      color: #475467;
+      background: #fff;
+    }
+    .search { background: #2563eb; color: #fff; text-align: center; font-weight: 700; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      background: #fff;
+      border: 1px solid #e7ecf5;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      border-bottom: 1px solid #edf1f8;
+      padding: 9px 8px;
+      text-align: left;
+      white-space: nowrap;
+    }
+    th { background: #f8faff; color: #334155; font-size: 11px; text-transform: uppercase; }
+    .prompt {
+      margin-top: 26px;
+      background: #fff;
+      border: 1px solid #e6eaf1;
+      border-radius: 10px;
+      box-shadow: 0 6px 18px rgba(0,0,0,.04);
+      padding: 18px 24px;
+    }
+    .prompt h5 { margin: 0 0 8px; font-size: 24px; }
+    .prompt ol { margin: 8px 0 0 20px; padding: 0; color: #3c4457; font-size: 19px; line-height: 1.6; }
+    .hl {
+      background: #d7f8d7;
+      padding: 1px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="titles">
+      <h2>User Home Page</h2>
+      <h2 style="text-align:left;">Admin Login</h2>
+    </div>
+
+    <div class="board">
+      <div class="flow-label">Log in</div>
+      <svg class="arrow-layer" viewBox="0 0 1200 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrowHead" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <polygon points="0 0, 9 4.5, 0 9" fill="#3b82f6"></polygon>
+          </marker>
+        </defs>
+        <path d="M380,120 C470,20 570,20 670,78" stroke="#3b82f6" stroke-width="5" marker-end="url(#arrowHead)"/>
+        <path d="M705,70 C700,105 700,105 685,130" stroke="#3b82f6" stroke-width="5" marker-end="url(#arrowHead)"/>
+        <path d="M710,70 C810,70 910,70 930,130" stroke="#3b82f6" stroke-width="5" marker-end="url(#arrowHead)"/>
+      </svg>
+
+      <div class="card">
+        <div class="user-top">
+          <div class="brand">SPORTS HUB</div>
+          <div class="nav"><span>Home</span><span>About</span><span>Sports</span><span>Contact</span></div>
+          <button class="login-btn">Log in</button>
+        </div>
+        <div class="hero">
+          <h3>Book Your Favorite<br><span>Sports Anytime</span></h3>
+          <p>Indoor &amp; outdoor sports booking made easy with premium courts and grounds.</p>
+          <div class="hero-actions">
+            <button class="btn btn-primary">Start Booking</button>
+            <button class="btn btn-secondary">Explore All Sports</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="admin-header">
+          <strong>Admin Panel - Sports Booking Management</strong>
+          <span>Admin &nbsp; | &nbsp; Logout</span>
+        </div>
+        <div class="admin-body">
+          <div class="side">
+            <div>Dashboard</div>
+            <div class="active">Bookings</div>
+            <div>Users</div>
+            <div>Reports</div>
+            <div>Settings</div>
+          </div>
+          <div class="main">
+            <h4>All Bookings</h4>
+            <div class="filters">
+              <div class="field">Search by Name</div>
+              <div class="field">Filter by Date</div>
+              <div class="search">Search</div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th><th>Email</th><th>Place</th><th>Date</th><th>Start Time</th><th>End Time</th><th>Hours</th><th>Total Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Rahul Sharma</td><td>rahul@email.com</td><td>Tennis Court</td><td>12/04/2026</td><td>09:00</td><td>11:00</td><td>2</td><td>₹200</td></tr>
+                <tr><td>Priya Singh</td><td>priya@email.com</td><td>Football Ground</td><td>12/04/2026</td><td>05:00</td><td>07:00</td><td>2</td><td>₹200</td></tr>
+                <tr><td>Amit Kumar</td><td>amit@email.com</td><td>Badminton Hall</td><td>13/04/2026</td><td>10:00</td><td>12:00</td><td>2</td><td>₹200</td></tr>
+                <tr><td>Sneha Patel</td><td>sneha@email.com</td><td>Box Cricket</td><td>14/04/2026</td><td>08:00</td><td>09:00</td><td>1</td><td>₹100</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="prompt">
+      <h5>📣 Prompt:</h5>
+      <ol>
+        <li>When the user clicks “Log in” on the user home page, navigate to the login page.</li>
+        <li>If the provided credentials match the admin account, redirect the user to <span class="hl">/admin-dashboard</span>.</li>
+      </ol>
+    </div>
+  </div>
+</body>
+</html>
