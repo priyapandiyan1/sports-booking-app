@@ -38,7 +38,7 @@ if (useMysql) {
     if (!dbPromise) {
       dbPromise = open({
         filename: process.env.VERCEL ? '/tmp/database.sqlite' : path.join(__dirname, 'database.sqlite'),
-
+        driver: sqlite3.Database
       });
     }
     return dbPromise;
