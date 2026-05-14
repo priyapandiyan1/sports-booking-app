@@ -1,19 +1,18 @@
 const express = require('express');
 const router = express.Router();
+
 const pool = require('../db/connection');
 const { authenticateToken, requireAdmin } = require('../middleware/authMiddleware');
 const { sendBookingStatusEmail } = require('../services/email');
 
-// Apply JWT auth + admin role check to ALL routes in this router
+
+// Apply JWT auth + admin role check to ALL routes below
 router.use(authenticateToken, requireAdmin);
 
 
 /**
  * GET /admin/bookings
- * Query params (all optional):
- *   ?date=YYYY-MM-DD  — filter by booking date
- *   ?search=name      — LIKE search on user name
- *   ?status=pending|confirmed|rejected|all  — filter by status (default: all)
+ * Returns bookings list + aggregate counts + total revenue
  */
 router.get('/bookings', async (req, res) => {
   try {
@@ -23,24 +22,24 @@ router.get('/bookings', async (req, res) => {
       SELECT
         b.id,
         b.place,
-        b.booking_date   AS booking_date,
-        b.start_time     AS start_time,
-        b.end_time       AS end_time,
-        b.total_hours    AS total_hours,
-        b.total_price    AS total_price,
+        b.booking_date AS booking_date,
+        b.start_time AS start_time,
+        b.end_time AS end_time,
+        b.total_hours AS total_hours,
+        b.total_price AS total_price,
         b.status,
-        b.created_at     AS created_at,
-        u.name           AS user_name,
-        u.email          AS user_email,
-        s.name           AS sport_name
+        b.created_at AS created_at,
+        u.name AS user_name,
+        u.email AS user_email,
+        s.name AS sport_name
       FROM bookings b
       INNER JOIN users u ON b.user_id = u.id
       INNER JOIN sports s ON b.sport_id = s.id
       WHERE 1=1
     `;
+
     const params = [];
 
-    // Status filter (skip if 'all' or not provided)
     if (status && status !== 'all') {
       sql += ' AND b.status = ?';
       params.push(status);
@@ -56,52 +55,65 @@ router.get('/bookings', async (req, res) => {
       params.push(`%${String(search).trim()}%`);
     }
 
-    sql += ' ORDER BY b.created_at DESC, b.booking_date DESC, b.start_time DESC';
+    sql += ' ORDER BY b.created_at DESC';
 
     const [rows] = await pool.query(sql, params);
 
-    const totalRevenue = rows
-      .filter(r => r.status === 'confirmed')
-      .reduce((sum, row) => {
-        const p = Number(row.total_price);
-        return sum + (Number.isFinite(p) ? p : 0);
-      }, 0);
+    // Aggregate counts (always unfiltered so tabs show total numbers)
+    const [countRows] = await pool.query(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END) AS confirmed,
+        SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) AS rejected
+      FROM bookings
+    `);
+    const c = countRows[0] || {};
+
+    // Revenue from confirmed bookings
+    const [revRows] = await pool.query(
+      "SELECT COALESCE(SUM(total_price), 0) AS revenue FROM bookings WHERE status = 'confirmed'"
+    );
 
     res.json({
       success: true,
       data: rows,
-      totalRevenue: Math.round(totalRevenue * 100) / 100,
       counts: {
-        all:       rows.length,
-        pending:   rows.filter(r => r.status === 'pending').length,
-        confirmed: rows.filter(r => r.status === 'confirmed').length,
-        rejected:  rows.filter(r => r.status === 'rejected').length,
+        all: Number(c.total) || 0,
+        pending: Number(c.pending) || 0,
+        confirmed: Number(c.confirmed) || 0,
+        rejected: Number(c.rejected) || 0,
       },
+      totalRevenue: Number(revRows[0]?.revenue) || 0,
     });
+
   } catch (error) {
     console.error('Admin bookings error:', error);
-    res.status(500).json({ success: false, error: error.message });
+
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
+
 /**
  * PATCH /admin/bookings/:id/status
- * Body: { status: 'pending' | 'confirmed' | 'rejected' }
- * Updates the booking status — used by Approve / Reject buttons.
+ * Update booking status (confirm / reject)
  */
 router.patch('/bookings/:id/status', async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-
-  const allowed = ['pending', 'confirmed', 'rejected'];
-  if (!status || !allowed.includes(status)) {
-    return res.status(400).json({
-      success: false,
-      error: `status must be one of: ${allowed.join(', ')}`,
-    });
-  }
-
   try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || !['confirmed', 'rejected', 'cancelled'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status. Must be one of: confirmed, rejected, cancelled'
+      });
+    }
+
     const [result] = await pool.query(
       'UPDATE bookings SET status = ? WHERE id = ?',
       [status, id]
@@ -111,42 +123,41 @@ router.patch('/bookings/:id/status', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Booking not found' });
     }
 
-    // After successful update, send the email notification
-    if (status === 'confirmed' || status === 'rejected') {
-      try {
-        const [rows] = await pool.query(
-          `SELECT b.booking_date, b.start_time, u.name as user_name, u.email as user_email, s.name as sport_name
-           FROM bookings b
-           JOIN users u ON b.user_id = u.id
-           JOIN sports s ON b.sport_id = s.id
-           WHERE b.id = ?`,
-          [id]
+    // Send status email to the user
+    try {
+      const [bookingRows] = await pool.query(`
+        SELECT b.booking_date, b.start_time, u.name AS user_name, u.email AS user_email, s.name AS sport_name
+        FROM bookings b
+        INNER JOIN users u ON b.user_id = u.id
+        INNER JOIN sports s ON b.sport_id = s.id
+        WHERE b.id = ?
+      `, [id]);
+
+      if (bookingRows.length > 0) {
+        const b = bookingRows[0];
+        await sendBookingStatusEmail(
+          b.user_email,
+          b.user_name,
+          b.sport_name,
+          b.booking_date,
+          b.start_time,
+          status
         );
-        if (rows.length > 0) {
-          const bData = rows[0];
-          // We intentionally don't await this so it doesn't block the API response
-          sendBookingStatusEmail(
-            bData.user_email,
-            bData.user_name,
-            bData.sport_name,
-            bData.booking_date,
-            bData.start_time,
-            status
-          );
-        }
-      } catch (err) {
-        console.error('Failed to dispatch status email:', err);
       }
+    } catch (emailErr) {
+      console.error('⚠️  Email notification error (non-fatal):', emailErr.message);
     }
 
     res.json({
       success: true,
-      message: `Booking #${id} status updated to "${status}"`,
+      message: `Booking ${id} updated to '${status}'`
     });
+
   } catch (error) {
-    console.error('Update status error:', error);
+    console.error('Admin status update error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
 
 module.exports = router;

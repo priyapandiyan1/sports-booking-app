@@ -1,8 +1,15 @@
 require('dotenv').config();
 const mysql = require('mysql2/promise');
-const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 const path = require('path');
+
+let sqlite3;
+try {
+  sqlite3 = require('sqlite3').verbose();
+} catch (err) {
+  console.error('❌ Failed to load sqlite3 native module:', err.message);
+  console.error('   Run: cd backend && npm rebuild sqlite3');
+}
 
 const useMysql = !!(process.env.DB_HOST || process.env.MYSQL_HOST);
 
@@ -36,6 +43,11 @@ if (useMysql) {
 
   async function getDb() {
     if (!dbPromise) {
+      if (!sqlite3) {
+        throw new Error(
+          'sqlite3 native module is not available. Run: cd backend && npm rebuild sqlite3'
+        );
+      }
       dbPromise = open({
         filename: process.env.VERCEL ? '/tmp/database.sqlite' : path.join(__dirname, 'database.sqlite'),
         driver: sqlite3.Database

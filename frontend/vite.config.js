@@ -12,8 +12,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     proxy: {
-      '/api': 'https://sports-booking-backend-new-2.onrender.com',
-      '/admin/bookings': 'https://sports-booking-backend-new-2.onrender.com',
+      '/api': 'http://localhost:5000',
+      '/admin': 'http://localhost:5000',
     },
   },
 })
+
