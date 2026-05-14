@@ -1,6 +1,6 @@
 const express = require('express');
 const router = require('express').Router();
-const pool = require('../db/connection');
+const getDb = require('../db/connection');
 const { sendPushNotification } = require('../services/fcm');
 const {
   normalizeTime,
@@ -31,7 +31,8 @@ const bookingSelectBase = `
 // GET all bookings (with user name and sport name via JOIN)
 router.get('/', async (req, res) => {
   try {
-    const [bookings] = await pool.query(`
+    const db = await getDb();
+    const bookings = await db.all(`
       SELECT ${bookingSelectBase}
       FROM bookings b
       JOIN users u ON b.user_id = u.id
@@ -56,7 +57,8 @@ router.get('/availability', async (req, res) => {
     }
     const durationHours = Math.min(12, Math.max(1, parseInt(hours, 10) || 1));
 
-    const [booked] = await pool.query(
+    const db = await getDb();
+    const booked = await db.all(
       `
       SELECT start_time, end_time
       FROM bookings
@@ -82,7 +84,8 @@ router.get('/availability', async (req, res) => {
 // GET all bookings for a specific user
 router.get('/user/:userId', async (req, res) => {
   try {
-    const [bookings] = await pool.query(
+    const db = await getDb();
+    const bookings = await db.all(
       `
       SELECT
         b.id,
@@ -112,7 +115,8 @@ router.get('/user/:userId', async (req, res) => {
 // GET a single booking by ID
 router.get('/:id', async (req, res) => {
   try {
-    const [bookings] = await pool.query(
+    const db = await getDb();
+    const bookings = await db.all(
       `
       SELECT ${bookingSelectBase}
       FROM bookings b
@@ -251,15 +255,16 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    const db = await getDb();
     // 1. Verify the sport exists
-    const [sports] = await pool.query('SELECT name FROM sports WHERE id = ?', [sport_id]);
+    const sports = await db.all('SELECT name FROM sports WHERE id = ?', [sport_id]);
     if (sports.length === 0) {
       return res.status(404).json({ success: false, error: 'Sport not found' });
     }
     const sportName = sports[0].name;
 
     // 2. Block overlapping bookings (same place + date)
-    const [conflicts] = await pool.query(
+    const conflicts = await db.all(
       `
       SELECT id FROM bookings
       WHERE place = ?
@@ -284,7 +289,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const [bookedForDay] = await pool.query(
+    const bookedForDay = await db.all(
       `
       SELECT start_time, end_time FROM bookings
       WHERE place = ? AND booking_date = ? AND status IN ('pending', 'confirmed')
@@ -303,16 +308,16 @@ router.post('/', async (req, res) => {
 
     // 3. Find or Create User
     let userId;
-    const [existingUsers] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
+    const existingUsers = await db.all('SELECT id FROM users WHERE email = ?', [email]);
     if (existingUsers.length > 0) {
       userId = existingUsers[0].id;
     } else {
-      const [userResult] = await pool.query('INSERT INTO users (name, email) VALUES (?, ?)', [name, email]);
-      userId = userResult.insertId;
+      const userResult = await db.run('INSERT INTO users (name, email) VALUES (?, ?)', [name, email]);
+      userId = userResult.lastID;
     }
 
     // 4. Insert Booking (starts as 'pending' — admin approves via dashboard)
-    const [result] = await pool.query(
+    const result = await db.run(
       `INSERT INTO bookings (user_id, sport_id, booking_date, start_time, end_time, total_hours, total_price, place, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       [userId, sport_id, booking_date, startNorm, endNorm, totalHours, total_price, place.trim()]
@@ -438,13 +443,13 @@ router.post('/', async (req, res) => {
       `🕐 *Time:* ${start_time} – ${end_time}\n` +
       `💰 *Total:* Rs.${total_price}\n` +
       `──────────────────\n` +
-      `Booking ID: #${result.insertId}`;
+      `Booking ID: #${result.lastID}`;
 
     await sendWhatsApp(waPhone, waMessage);
 
     // 6. Send FCM Push Notification
     try {
-      const [tokenRows] = await pool.query(
+      const tokenRows = await db.all(
         'SELECT token FROM fcm_tokens ORDER BY updated_at DESC LIMIT 1'
       );
       const fcmToken = tokenRows.length > 0 ? tokenRows[0].token : null;
@@ -454,7 +459,7 @@ router.post('/', async (req, res) => {
         title: `🏅 New Booking: ${sportName}`,
         body:  `${name} booked ${sportName} at ${place} on ${booking_date}`,
         data: {
-          bookingId:    String(result.insertId),
+          bookingId:    String(result.lastID),
           name,
           email,
           sport:        sportName,
@@ -472,7 +477,7 @@ router.post('/', async (req, res) => {
     res.status(201).json({ 
       success: true, 
       message: 'Booking created', 
-      bookingId: result.insertId,
+      bookingId: result.lastID,
       emailPreviewUrl: previewUrl 
     });
   } catch (error) {
@@ -484,11 +489,12 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const { sport_id, booking_date } = req.body;
   try {
-    const [result] = await pool.query(
+    const db = await getDb();
+    const result = await db.run(
       'UPDATE bookings SET sport_id = ?, booking_date = ? WHERE id = ?',
       [sport_id, booking_date, req.params.id]
     );
-    if (result.affectedRows === 0) {
+    if (result.changes === 0) {
       return res.status(404).json({ success: false, error: 'Booking not found' });
     }
     res.json({ success: true, message: 'Booking updated' });
@@ -500,8 +506,9 @@ router.put('/:id', async (req, res) => {
 // DELETE a booking by ID
 router.delete('/:id', async (req, res) => {
   try {
-    const [result] = await pool.query('DELETE FROM bookings WHERE id = ?', [req.params.id]);
-    if (result.affectedRows === 0) {
+    const db = await getDb();
+    const result = await db.run('DELETE FROM bookings WHERE id = ?', [req.params.id]);
+    if (result.changes === 0) {
       return res.status(404).json({ success: false, error: 'Booking not found' });
     }
     res.json({ success: true, message: 'Booking deleted' });

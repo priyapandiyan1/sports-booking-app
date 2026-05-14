@@ -2,8 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const pool = require('./db/connection');
-const { useMysql } = require('./db/connection');
+const getDb = require('./db/connection');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -24,13 +23,8 @@ app.use(express.json());
 // -------------------- DB TEST CONNECTION --------------------
 (async () => {
   try {
-    const conn = await pool.getConnection();
-    if (useMysql) {
-      console.log("✅ MySQL Database connected successfully!");
-    } else {
-      console.log("✅ SQLite Database connected successfully!");
-    }
-    conn.release();
+    await getDb();
+    console.log("✅ SQLite Database connected successfully!");
   } catch (err) {
     console.error("❌ Database connection failed:", err.message);
   }
@@ -39,68 +33,37 @@ app.use(express.json());
 // -------------------- AUTO MIGRATION --------------------
 (async () => {
   try {
-    let groupsSql, reqSql;
+    const db = await getDb();
+    const groupsSql = `
+      CREATE TABLE IF NOT EXISTS "groups" (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sport_id INT NOT NULL,
+        admin_id INT NOT NULL,
+        place VARCHAR(255) NOT NULL,
+        game_date DATE NOT NULL,
+        start_time TIME NOT NULL,
+        end_time TIME NOT NULL,
+        max_players INT NOT NULL DEFAULT 10,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (sport_id) REFERENCES sports(id) ON DELETE CASCADE,
+        FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `;
+    const reqSql = `
+      CREATE TABLE IF NOT EXISTS group_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INT NOT NULL,
+        user_id INT NOT NULL,
+        status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (group_id) REFERENCES "groups"(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(group_id, user_id)
+      )
+    `;
 
-    if (useMysql) {
-      groupsSql = `
-        CREATE TABLE IF NOT EXISTS \`groups\` (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          sport_id INT NOT NULL,
-          admin_id INT NOT NULL,
-          place VARCHAR(255) NOT NULL,
-          game_date DATE NOT NULL,
-          start_time TIME NOT NULL,
-          end_time TIME NOT NULL,
-          max_players INT NOT NULL DEFAULT 10,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (sport_id) REFERENCES sports(id) ON DELETE CASCADE,
-          FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-      `;
-      reqSql = `
-        CREATE TABLE IF NOT EXISTS group_requests (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          group_id INT NOT NULL,
-          user_id INT NOT NULL,
-          status VARCHAR(20) DEFAULT 'pending',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (group_id) REFERENCES \`groups\`(id) ON DELETE CASCADE,
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-          UNIQUE KEY unique_request (group_id, user_id)
-        )
-      `;
-    } else {
-      groupsSql = `
-        CREATE TABLE IF NOT EXISTS "groups" (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          sport_id INT NOT NULL,
-          admin_id INT NOT NULL,
-          place VARCHAR(255) NOT NULL,
-          game_date DATE NOT NULL,
-          start_time TIME NOT NULL,
-          end_time TIME NOT NULL,
-          max_players INT NOT NULL DEFAULT 10,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (sport_id) REFERENCES sports(id) ON DELETE CASCADE,
-          FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-      `;
-      reqSql = `
-        CREATE TABLE IF NOT EXISTS group_requests (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          group_id INT NOT NULL,
-          user_id INT NOT NULL,
-          status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (group_id) REFERENCES "groups"(id) ON DELETE CASCADE,
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-          UNIQUE(group_id, user_id)
-        )
-      `;
-    }
-
-    await pool.query(groupsSql);
-    await pool.query(reqSql);
+    await db.run(groupsSql);
+    await db.run(reqSql);
 
     console.log("✅ Auto-migration completed (groups tables ready)");
   } catch (err) {

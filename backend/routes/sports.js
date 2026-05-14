@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const pool = require('../db/connection');
+const getDb = require('../db/connection');
 
 // GET all sports
 router.get('/', async (req, res) => {
   try {
-    const [rows] = await pool.query(
+    const db = await getDb();
+    const rows = await db.all(
       'SELECT id, name AS sport_name, price_per_hour AS price FROM sports ORDER BY name ASC'
     );
     res.json({ success: true, data: rows });
@@ -18,7 +19,8 @@ router.get('/', async (req, res) => {
 // GET single sport
 router.get('/:id', async (req, res) => {
   try {
-    const [rows] = await pool.query(
+    const db = await getDb();
+    const rows = await db.all(
       'SELECT id, name AS sport_name, price_per_hour AS price FROM sports WHERE id = ?',
       [req.params.id]
     );
@@ -35,14 +37,15 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   const { sport_name, price } = req.body;
   try {
-    const [result] = await pool.query(
+    const db = await getDb();
+    const result = await db.run(
       'INSERT INTO sports (name, price_per_hour) VALUES (?, ?)',
       [sport_name, price]
     );
     res.status(201).json({
       success: true,
       message: 'Sport created',
-      sportId: result.insertId
+      sportId: result.lastID
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -53,11 +56,12 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const { sport_name, price } = req.body;
   try {
-    const [result] = await pool.query(
+    const db = await getDb();
+    const result = await db.run(
       'UPDATE sports SET name = ?, price_per_hour = ? WHERE id = ?',
       [sport_name, price, req.params.id]
     );
-    if (result.affectedRows === 0) {
+    if (result.changes === 0) {
       return res.status(404).json({ success: false, error: 'Sport not found' });
     }
     res.json({ success: true, message: 'Sport updated' });
@@ -69,11 +73,12 @@ router.put('/:id', async (req, res) => {
 // DELETE sport
 router.delete('/:id', async (req, res) => {
   try {
-    const [result] = await pool.query(
+    const db = await getDb();
+    const result = await db.run(
       'DELETE FROM sports WHERE id = ?',
       [req.params.id]
     );
-    if (result.affectedRows === 0) {
+    if (result.changes === 0) {
       return res.status(404).json({ success: false, error: 'Sport not found' });
     }
     res.json({ success: true, message: 'Sport deleted' });

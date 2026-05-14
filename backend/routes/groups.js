@@ -1,17 +1,17 @@
 const express = require('express');
 const router = require('express').Router();
-const pool = require('../db/connection');
+const getDb = require('../db/connection');
 const { normalizeTime } = require('../services/bookingMath');
 
 // Helper to find or create a user by email
-async function getOrCreateUser(name, email) {
+async function getOrCreateUser(db, name, email) {
   let userId;
-  const [existingUsers] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
+  const existingUsers = await db.all('SELECT id FROM users WHERE email = ?', [email]);
   if (existingUsers.length > 0) {
     userId = existingUsers[0].id;
   } else {
-    const [userResult] = await pool.query('INSERT INTO users (name, email) VALUES (?, ?)', [name, email]);
-    userId = userResult.insertId;
+    const userResult = await db.run('INSERT INTO users (name, email) VALUES (?, ?)', [name, email]);
+    userId = userResult.lastID;
   }
   return userId;
 }
@@ -19,7 +19,8 @@ async function getOrCreateUser(name, email) {
 // GET all groups
 router.get('/', async (req, res) => {
   try {
-    const [groups] = await pool.query(`
+    const db = await getDb();
+    const groups = await db.all(`
       SELECT 
         g.id, g.place, g.game_date, g.start_time, g.end_time, g.max_players, g.created_at,
         s.name AS sport_name,
@@ -48,21 +49,22 @@ router.post('/', async (req, res) => {
   const endNorm = normalizeTime(end_time);
 
   try {
-    const adminId = await getOrCreateUser(admin_name, admin_email);
+    const db = await getDb();
+    const adminId = await getOrCreateUser(db, admin_name, admin_email);
 
-    const [result] = await pool.query(
+    const result = await db.run(
       `INSERT INTO groups (sport_id, admin_id, place, game_date, start_time, end_time, max_players)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [sport_id, adminId, place, game_date, startNorm, endNorm, max_players || 10]
     );
 
     // Add admin as an accepted player automatically
-    await pool.query(
+    await db.run(
       `INSERT INTO group_requests (group_id, user_id, status) VALUES (?, ?, 'accepted')`,
-      [result.insertId, adminId]
+      [result.lastID, adminId]
     );
 
-    res.status(201).json({ success: true, groupId: result.insertId, message: 'Group created successfully' });
+    res.status(201).json({ success: true, groupId: result.lastID, message: 'Group created successfully' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
@@ -71,7 +73,8 @@ router.post('/', async (req, res) => {
 // GET group details by ID
 router.get('/:id', async (req, res) => {
   try {
-    const [groups] = await pool.query(`
+    const db = await getDb();
+    const groups = await db.all(`
       SELECT 
         g.*,
         s.name AS sport_name,
@@ -90,7 +93,7 @@ router.get('/:id', async (req, res) => {
 
     const group = groups[0];
 
-    const [requests] = await pool.query(`
+    const requests = await db.all(`
       SELECT 
         gr.id AS request_id,
         gr.status,
@@ -122,14 +125,15 @@ router.post('/:id/request', async (req, res) => {
   }
 
   try {
-    const userId = await getOrCreateUser(user_name, user_email);
+    const db = await getDb();
+    const userId = await getOrCreateUser(db, user_name, user_email);
 
     // Check if group is full
-    const [counts] = await pool.query(
+    const counts = await db.all(
       `SELECT COUNT(*) as count FROM group_requests WHERE group_id = ? AND status = 'accepted'`, 
       [groupId]
     );
-    const [groupInfo] = await pool.query(`SELECT max_players FROM groups WHERE id = ?`, [groupId]);
+    const groupInfo = await db.all(`SELECT max_players FROM groups WHERE id = ?`, [groupId]);
     
     if (groupInfo.length === 0) {
         return res.status(404).json({ success: false, error: 'Group not found' });
@@ -140,14 +144,14 @@ router.post('/:id/request', async (req, res) => {
     }
 
     // Insert request
-    await pool.query(
+    await db.run(
       `INSERT INTO group_requests (group_id, user_id, status) VALUES (?, ?, 'pending')`,
       [groupId, userId]
     );
 
     res.status(201).json({ success: true, message: 'Join request sent successfully' });
   } catch (error) {
-    if (error.code === 'ER_DUP_ENTRY' || String(error.message).includes('UNIQUE constraint failed')) {
+    if (error.code === 'SQLITE_CONSTRAINT' || String(error.message).includes('UNIQUE constraint failed')) {
       res.status(400).json({ success: false, error: 'You have already requested to join this group' });
     } else {
       res.status(500).json({ success: false, error: error.message });
@@ -166,8 +170,9 @@ router.put('/:id/requests/:requestId', async (req, res) => {
   }
 
   try {
+    const db = await getDb();
     // Verify admin
-    const [group] = await pool.query(`
+    const group = await db.all(`
       SELECT g.id, u.email as admin_email, g.max_players 
       FROM groups g 
       JOIN users u ON g.admin_id = u.id 
@@ -182,7 +187,7 @@ router.put('/:id/requests/:requestId', async (req, res) => {
 
     // If accepting, check capacity
     if (status === 'accepted') {
-      const [counts] = await pool.query(
+      const counts = await db.all(
         `SELECT COUNT(*) as count FROM group_requests WHERE group_id = ? AND status = 'accepted'`, 
         [groupId]
       );
@@ -192,12 +197,12 @@ router.put('/:id/requests/:requestId', async (req, res) => {
     }
 
     // Update status
-    const [result] = await pool.query(
+    const result = await db.run(
       `UPDATE group_requests SET status = ? WHERE id = ? AND group_id = ?`,
       [status, requestId, groupId]
     );
 
-    if (result.affectedRows === 0) {
+    if (result.changes === 0) {
       return res.status(404).json({ success: false, error: 'Request not found' });
     }
 

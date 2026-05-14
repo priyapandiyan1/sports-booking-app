@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const pool = require('../db/connection');
+const getDb = require('../db/connection');
 const { authenticateToken, requireAdmin } = require('../middleware/authMiddleware');
 const { sendBookingStatusEmail } = require('../services/email');
 
@@ -16,6 +16,7 @@ router.use(authenticateToken, requireAdmin);
  */
 router.get('/bookings', async (req, res) => {
   try {
+    const db = await getDb();
     const { date, search, status } = req.query;
 
     let sql = `
@@ -57,10 +58,10 @@ router.get('/bookings', async (req, res) => {
 
     sql += ' ORDER BY b.created_at DESC';
 
-    const [rows] = await pool.query(sql, params);
+    const rows = await db.all(sql, params);
 
     // Aggregate counts (always unfiltered so tabs show total numbers)
-    const [countRows] = await pool.query(`
+    const countRows = await db.all(`
       SELECT
         COUNT(*) AS total,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
@@ -71,7 +72,7 @@ router.get('/bookings', async (req, res) => {
     const c = countRows[0] || {};
 
     // Revenue from confirmed bookings
-    const [revRows] = await pool.query(
+    const revRows = await db.all(
       "SELECT COALESCE(SUM(total_price), 0) AS revenue FROM bookings WHERE status = 'confirmed'"
     );
 
@@ -104,6 +105,7 @@ router.get('/bookings', async (req, res) => {
  */
 router.patch('/bookings/:id/status', async (req, res) => {
   try {
+    const db = await getDb();
     const { id } = req.params;
     const { status } = req.body;
 
@@ -114,18 +116,18 @@ router.patch('/bookings/:id/status', async (req, res) => {
       });
     }
 
-    const [result] = await pool.query(
+    const result = await db.run(
       'UPDATE bookings SET status = ? WHERE id = ?',
       [status, id]
     );
 
-    if (result.affectedRows === 0) {
+    if (result.changes === 0) {
       return res.status(404).json({ success: false, error: 'Booking not found' });
     }
 
     // Send status email to the user
     try {
-      const [bookingRows] = await pool.query(`
+      const bookingRows = await db.all(`
         SELECT b.booking_date, b.start_time, u.name AS user_name, u.email AS user_email, s.name AS sport_name
         FROM bookings b
         INNER JOIN users u ON b.user_id = u.id
