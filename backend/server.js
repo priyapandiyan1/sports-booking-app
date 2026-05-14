@@ -89,6 +89,27 @@ app.get('/api/health', (req, res) => {
 });
 
 
+// -------------------- FRONTEND --------------------
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
+
+// SPA fallback (React routing support)
+app.use((req, res) => {
+  if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/admin')) {
+    return res.status(404).json({
+      success: false,
+      error: 'Route not found'
+    });
+  }
+
+  const frontendPath = path.join(__dirname, '../frontend/dist/index.html');
+  const fs = require('fs');
+  if (fs.existsSync(frontendPath)) {
+    res.sendFile(frontendPath);
+  } else {
+    res.status(200).send("Backend is running! Please access the frontend URL or use the /api routes.");
+  }
+});
+
 // -------------------- GLOBAL ERROR HANDLER --------------------
 app.use((err, req, res, next) => {
   console.error("❌ Error:", err);
