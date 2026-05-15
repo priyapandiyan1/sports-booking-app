@@ -34,6 +34,49 @@ app.use(express.json());
 (async () => {
   try {
     const db = await getDb();
+    
+    await db.run('PRAGMA foreign_keys = ON;');
+
+    await db.run(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name VARCHAR(100) NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        password VARCHAR(255),
+        role VARCHAR(20) DEFAULT 'user',
+        phone VARCHAR(20),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await db.run(`
+      CREATE TABLE IF NOT EXISTS sports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name VARCHAR(100) NOT NULL,
+        description TEXT,
+        price_per_hour DECIMAL(10, 2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await db.run(`
+      CREATE TABLE IF NOT EXISTS bookings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INT NOT NULL,
+        sport_id INT NOT NULL,
+        place VARCHAR(255),
+        booking_date DATE NOT NULL,
+        start_time TIME NOT NULL,
+        end_time TIME NOT NULL,
+        total_hours REAL NOT NULL DEFAULT 0,
+        total_price DECIMAL(10, 2) NOT NULL,
+        status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'rejected', 'cancelled')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (sport_id) REFERENCES sports(id) ON DELETE CASCADE
+      )
+    `);
+
     const groupsSql = `
       CREATE TABLE IF NOT EXISTS "groups" (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,6 +107,19 @@ app.use(express.json());
 
     await db.run(groupsSql);
     await db.run(reqSql);
+
+    // Seed default admin and sports if they don't exist
+    const adminCheck = await db.get("SELECT id FROM users WHERE email = 'admin@example.com'");
+    if (!adminCheck) {
+      const bcrypt = require('bcryptjs');
+      const hash = await bcrypt.hash('admin123', 10);
+      await db.run("INSERT INTO users (name, email, password, role) VALUES ('Admin', 'admin@example.com', ?, 'admin')", [hash]);
+    }
+
+    const sportsCheck = await db.get("SELECT id FROM sports LIMIT 1");
+    if (!sportsCheck) {
+      await db.run("INSERT INTO sports (name, description, price_per_hour) VALUES ('Football', 'Outdoor grass field', 1500), ('Cricket', 'Cricket ground with nets', 2000), ('Badminton', 'Indoor wooden court', 800)");
+    }
 
     console.log("✅ Auto-migration completed (groups tables ready)");
   } catch (err) {
