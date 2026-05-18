@@ -1,21 +1,21 @@
-```js
+
 const sqlite3 = require("sqlite3").verbose();
 const { open } = require("sqlite");
 const path = require("path");
 
-let db;
+let dbPromise;
 
-async function initializeDB() {
-  db = await open({
-    filename: path.join(__dirname, "database.sqlite"),
-    driver: sqlite3.Database,
-  });
-
-  console.log("Database connected");
+async function getDb() {
+  if (!dbPromise) {
+    dbPromise = open({
+      filename: path.join(__dirname, "database.sqlite"),
+      driver: sqlite3.Database,
+    }).then(db => {
+      console.log("Database connected");
+      return db;
+    });
+  }
+  return dbPromise;
 }
 
-module.exports = {
-  initializeDB,
-  getDB: () => db,
-};
-```
+module.exports = getDb;

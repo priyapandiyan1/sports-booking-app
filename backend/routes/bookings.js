@@ -213,6 +213,8 @@ let isRealEmailConfigured = false;
 createTransporter().then(t => {
   transporter = t;
   isRealEmailConfigured = hasRealSmtpConfig();
+}).catch(err => {
+  console.error("❌ Failed to create email transporter:", err.message);
 });
 
 // POST create a new booking
