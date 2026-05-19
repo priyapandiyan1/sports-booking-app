@@ -1,7 +1,6 @@
 const express = require('express');
 const router = require('express').Router();
 const getDb = require('../db/connection');
-const { sendPushNotification } = require('../services/fcm');
 const {
   normalizeTime,
   hoursBetween,
@@ -449,32 +448,7 @@ router.post('/', async (req, res) => {
 
     await sendWhatsApp(waPhone, waMessage);
 
-    // 6. Send FCM Push Notification
-    try {
-      const tokenRows = await db.all(
-        'SELECT token FROM fcm_tokens ORDER BY updated_at DESC LIMIT 1'
-      );
-      const fcmToken = tokenRows.length > 0 ? tokenRows[0].token : null;
 
-      await sendPushNotification({
-        token: fcmToken,
-        title: `🏅 New Booking: ${sportName}`,
-        body:  `${name} booked ${sportName} at ${place} on ${booking_date}`,
-        data: {
-          bookingId:    String(result.lastID),
-          name,
-          email,
-          sport:        sportName,
-          place,
-          booking_date,
-          start_time,
-          end_time,
-          total_price:  String(total_price),
-        },
-      });
-    } catch (pushErr) {
-      console.error('⚠️  Push notification error (non-fatal):', pushErr.message);
-    }
 
     res.status(201).json({ 
       success: true, 

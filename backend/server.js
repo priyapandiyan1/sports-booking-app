@@ -12,7 +12,6 @@ const authRouter = require('./routes/auth');
 const usersRouter = require('./routes/users');
 const sportsRouter = require('./routes/sports');
 const bookingsRouter = require('./routes/bookings');
-const notificationsRouter = require('./routes/notifications');
 const groupsRouter = require('./routes/groups');
 const adminRouter = require('./routes/admin');
 
@@ -133,7 +132,6 @@ app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/sports', sportsRouter);
 app.use('/api/bookings', bookingsRouter);
-app.use('/api/notifications', notificationsRouter);
 app.use('/api/groups', groupsRouter);
 
 // -------------------- HEALTH CHECK --------------------

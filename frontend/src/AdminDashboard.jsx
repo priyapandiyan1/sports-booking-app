@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { registerFCMToken, onForegroundMessage } from './firebase';
 import api from './api';
 
 const POLL_INTERVAL = 6000;
@@ -164,36 +163,7 @@ const AdminDashboard = () => {
   const isFirstLoad  = useRef(true);
   const lastSeenIdRef = useRef(null);
 
-  // ── FCM token registration ─────────────────────────────────────────────────
-  useEffect(() => {
-    const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || 'YOUR_VAPID_KEY_HERE';
-    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-      setPushStatus('error'); return;
-    }
-    if (VAPID_KEY === 'YOUR_VAPID_KEY_HERE') { setPushStatus('idle'); return; }
-    setPushStatus('requesting');
-    registerFCMToken(VAPID_KEY)
-      .then(token => setPushStatus(token ? 'active' : (Notification.permission === 'denied' ? 'denied' : 'error')))
-      .catch(() => setPushStatus('error'));
-  }, []);
 
-  // ── FCM foreground messages ────────────────────────────────────────────────
-  useEffect(() => {
-    const unsubscribe = onForegroundMessage(({ title, body, data }) => {
-      setAlertBooking({
-        user_name:    data.name  || 'Unknown',
-        user_email:   data.email || '',
-        sport_name:   data.sport || '',
-        place:        data.place || '',
-        booking_date: data.booking_date || '',
-        start_time:   data.start_time   || '',
-        end_time:     data.end_time     || '',
-        total_price:  data.total_price  || '',
-        id:           data.bookingId    || null,
-      });
-    });
-    return () => unsubscribe && unsubscribe();
-  }, []);
 
   // ── Fetch bookings ─────────────────────────────────────────────────────────
   const fetchBookings = useCallback(async (showAlert = true) => {
